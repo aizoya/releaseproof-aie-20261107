@@ -55,8 +55,11 @@ $('accept').addEventListener('click', async () => {
 });
 $('download').addEventListener('click',()=>{
   if(!current)return;
-  const url=URL.createObjectURL(new Blob([JSON.stringify(current,null,2)],{type:'application/json'}));
-  const a=document.createElement('a');a.href=url;a.download=`releaseproof-${current.candidate_sha256.slice(0,12)}.json`;a.click();URL.revokeObjectURL(url);
+  const form=document.createElement('form');form.method='POST';form.action='/api/report';form.hidden=true;
+  for(const [name,value] of Object.entries({source:$('source').value,challenge_seed:current.challenge_seed})){
+    const input=document.createElement('input');input.type='hidden';input.name=name;input.value=value;form.append(input);
+  }
+  document.body.append(form);form.submit();form.remove();
 });
 async function readJson(path){const r=await fetch(path);if(!r.ok)throw new Error('Could not load verification configuration.');return r.json();}
 Promise.all([readJson('/api/config'),readJson('/api/examples')]).then(([config,data])=>{
