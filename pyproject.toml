@@ -7,7 +7,7 @@ name = "aizoya-releaseproof-event"
 version = "0.1.0"
 description = "Bounded independent verification prototype for AIE Code Summit 2026"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["pymongo==4.19.0", "dnspython==2.9.2"]
 
 [tool.setuptools]
 packages = ["releaseproof"]
