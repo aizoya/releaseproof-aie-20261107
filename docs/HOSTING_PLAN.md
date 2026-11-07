@@ -4,7 +4,7 @@
 
 Branch: `build/hosted-preview`, based on public source commit `9cfab9a81ef70b1ed2f80de974454b503450c548`.
 
-- WSGI application entrypoint `app.py` / `releaseproof.preview.app`, following Vercel's documented Python entrypoint support.
+- WSGI application `releaseproof.preview.app`, exposed through `api/index.py` for the existing project’s file-based Python runtime. `app.py` remains a local WSGI convenience entrypoint.
 - Standard-library runtime only; ten-second configured function duration.
 - Existing web interface and synthetic fixtures included explicitly.
 - Verification is real bounded evaluation. No general Python execution, repository fetching or external model calls.
@@ -12,7 +12,7 @@ Branch: `build/hosted-preview`, based on public source commit `9cfab9a81ef70b1ed
 - `POST /api/accept` returns 503/blocked, including after a passing verification. Missing persistence cannot approve a candidate.
 - Local CLI/server still support persisted SQLite evidence and explicit local acceptance.
 - Preview labels and controls reflect server capabilities. Edited candidate source clears the old verdict.
-- 52 tests passed locally with optional ACP dependencies; no Vercel build or hosted browser QA has occurred.
+- 56 tests passed locally with optional ACP dependencies. A protected Vercel preview and desktop verification journey are now observed; see DEPLOYMENT.md for the exact result and remaining limitations.
 
 ## Proposed deployment
 
@@ -30,11 +30,11 @@ Read-only Cloud Browser check of the AIZOYA Vercel billing page:
 - Existing team on-demand budget: $200; automatic pause OFF. This is not a project-specific $0 cap.
 - Existing recurring invoice displayed: $20; this was not created or changed by this work.
 
-Included credit and spend change as other projects run. The observed remaining credit does not guarantee that another deployment creates no incremental charge. No deployment, billing change or team-budget change occurred. Franklyn's existing $20 fallback applies to Meta only, not hosting.
+Included credit and spend change as other projects run. The observed remaining credit does not guarantee that another deployment creates no incremental charge. The first preview build was rejected before runtime creation because root-level `app.py` was not matched by this existing project’s file-based runtime. The correction uses `api/index.py`. No production deployment, billing-setting change or team-budget change occurred. Franklyn subsequently approved up to $5 additional demo hosting, separate from the $20 Meta fallback.
 
 ## Approval / connection gates
 
-1. Confirm a hosting overage allowance, or establish a suitable no-overage boundary, before paid-capable deployment. Do not alter company-wide spending controls without explicit permission.
+1. Hosting allowance approved: up to $5 additional demo hosting. Keep the existing authentication protection, deploy previews only, and check usage before expanding. Do not alter company-wide spending controls without explicit permission.
 2. Secure provider configuration is absent: no Meta key, Gemini key, MongoDB URI or agent seed/endpoint is configured in this workspace. The existing Vercel project's listed environment-variable set is empty; this does not establish team-wide credential availability.
 3. Connect MongoDB using the existing credited account through a secure provider/runtime flow. Verify actual durable evidence storage before enabling hosted acceptance.
 4. Establish an ACP-capable runtime, register the agent and observe an actual ASI:One request/response and discoverability.
