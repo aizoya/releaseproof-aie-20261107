@@ -4,6 +4,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 from .core import MAX_SOURCE
+from .export import export_report, MAX_EXPORT_BODY
 from .store import Store, GateBlocked
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -12,14 +13,15 @@ class Handler(BaseHTTPRequestHandler):
         pass  # Avoid recording request content, paths or query strings.
     def valid_host(self):
         return self.headers.get('Host') in (f'127.0.0.1:{self.server.server_port}', f'localhost:{self.server.server_port}')
-    def respond(self, status, body, kind='application/json'):
+    def respond(self, status, body, kind='application/json', extra_headers=()):
         if kind == 'application/json': body = json.dumps(body).encode()
         self.send_response(status)
         self.send_header('Content-Type', kind)
         self.send_header('Content-Length', str(len(body)))
         self.send_header('Cache-Control', 'no-store')
         self.send_header('X-Content-Type-Options', 'nosniff')
-        self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+        self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+        for name,value in extra_headers: self.send_header(name,value)
         self.end_headers()
         self.wfile.write(body)
     def do_GET(self):
@@ -45,6 +47,19 @@ class Handler(BaseHTTPRequestHandler):
         origin = self.headers.get('Origin')
         allowed = (f'http://127.0.0.1:{self.server.server_port}', f'http://localhost:{self.server.server_port}')
         if origin and origin not in allowed: return self.respond(403, {'error': 'Cross-origin request refused.'})
+        if self.path=='/api/report':
+            try:
+                if self.headers.get('Content-Type','').split(';')[0]!='application/x-www-form-urlencoded':
+                    return self.respond(415,{'error':'Form encoding required.'})
+                size=int(self.headers.get('Content-Length','0'))
+                if not 0<size<=MAX_EXPORT_BODY:return self.respond(413,{'error':'Export too large.'})
+                raw=self.rfile.read(size)
+                if len(raw)!=size:raise ValueError()
+                report=export_report(raw)
+                filename='releaseproof-'+report['candidate_sha256'][:12]+'.json'
+                return self.respond(200,report,extra_headers=[('Content-Disposition','attachment; filename="'+filename+'"')])
+            except (ValueError,UnicodeError,RecursionError):
+                return self.respond(400,{'error':'Invalid export request.','gate':'blocked'})
         if self.headers.get('Content-Type', '').split(';')[0] != 'application/json':
             return self.respond(415, {'error': 'JSON required.'})
         try:

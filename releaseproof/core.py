@@ -31,7 +31,7 @@ CASES = (
     ('fully-discounted', 2500, 700, 2500),
     ('upper-bound', 1000000, 100000, 0),
 )
-ENGINE_VERSION = 'bounded-ast-v1'
+ENGINE_VERSION = 'bounded-ast-v2'
 CHALLENGE_COUNT = 32
 
 class Unsupported(ValueError):
@@ -149,20 +149,23 @@ class Check:
     passed: bool
 
 
-def verify(source: str, challenge_seed: int | None = None) -> dict:
+def verify(source: str, challenge_seed: int | str | None = None) -> dict:
     start = time.perf_counter()
     if challenge_seed is None:
         challenge_seed = secrets.randbits(64)
+    if (isinstance(challenge_seed,str) and 0<len(challenge_seed)<=20 and
+        all(c in '0123456789' for c in challenge_seed)):
+        challenge_seed=int(challenge_seed)
     if type(challenge_seed) is not int or not 0 <= challenge_seed < 2**64:
         raise ValueError('Challenge seed must be an unsigned 64-bit integer.')
     report = {
-        'schema_version': 1, 'engine': ENGINE_VERSION,
+        'schema_version': 2, 'engine': ENGINE_VERSION,
         'candidate_sha256': hashlib.sha256(source.encode()).hexdigest(),
         'suite_sha256': suite_digest(), 'contract': CONTRACT,
         'status': 'inconclusive', 'gate': 'blocked', 'checks': [],
         'reason': '', 'scope': 'Synthetic fixture; restricted expression evaluation; no general Python execution.',
         'provider_calls': 0,
-        'challenge_seed': challenge_seed,
+        'challenge_seed': str(challenge_seed),
     }
     try:
         functions = parse_candidate(source)

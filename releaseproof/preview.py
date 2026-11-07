@@ -3,15 +3,16 @@ import json
 from pathlib import Path
 from urllib.parse import urlsplit
 from .core import MAX_SOURCE, verify
+from .export import export_report, MAX_EXPORT_BODY
 ROOT=Path(__file__).resolve().parents[1]
 CONFIG={'mode':'hosted-preview','persistent_evidence':False,'acceptance_enabled':False,'live_providers':False}
 SECURITY=[('Cache-Control','no-store'),('X-Content-Type-Options','nosniff'),
-          ('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")]
+          ('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")]
 
 def app(environ,start_response):
-    def reply(code,data,kind='application/json'):
+    def reply(code,data,kind='application/json',extra_headers=()):
         raw=json.dumps(data).encode() if kind=='application/json' else data
-        start_response(code,[('Content-Type',kind),('Content-Length',str(len(raw))),*SECURITY])
+        start_response(code,[('Content-Type',kind),('Content-Length',str(len(raw))),*SECURITY,*extra_headers])
         return [raw]
     method=environ.get('REQUEST_METHOD','GET')
     path=environ.get('PATH_INFO','/')
@@ -37,6 +38,21 @@ def app(environ,start_response):
             return reply('403 Forbidden',{'error':'Cross-origin request refused.'})
     if path=='/api/accept':
         return reply('503 Service Unavailable',{'error':'Acceptance is disabled until durable evidence storage is connected.','gate':'blocked'})
+    if path=='/api/report':
+        if environ.get('CONTENT_TYPE','').split(';')[0]!='application/x-www-form-urlencoded':
+            return reply('415 Unsupported Media Type',{'error':'Form encoding required.'})
+        try:
+            size=int(environ.get('CONTENT_LENGTH','0'))
+            if not 0<size<=MAX_EXPORT_BODY:return reply('413 Content Too Large',{'error':'Export request too large.'})
+            raw=environ['wsgi.input'].read(size)
+            if len(raw)!=size:raise ValueError()
+            report=export_report(raw)
+            report['storage']='not-persisted';report['acceptance_enabled']=False
+            if report['status']=='pass':report['reason']='All 40 bounded checks passed. Evidence is not persisted; acceptance remains disabled.'
+            filename='releaseproof-'+report['candidate_sha256'][:12]+'.json'
+            return reply('200 OK',report,extra_headers=[('Content-Disposition','attachment; filename="'+filename+'"')])
+        except (ValueError,UnicodeError,RecursionError):
+            return reply('400 Bad Request',{'error':'Invalid export request.','gate':'blocked'})
     if path!='/api/verify':return reply('404 Not Found',{'error':'Not found.'})
     if environ.get('CONTENT_TYPE','').split(';')[0]!='application/json':
         return reply('415 Unsupported Media Type',{'error':'JSON required.'})
