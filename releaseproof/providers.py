@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import re
 import time
 import uuid
 from pathlib import Path
@@ -45,6 +46,18 @@ def unique_json_object(pairs):
             raise ValueError('Duplicate response field')
         result[key] = value
     return result
+
+
+def normalize_subq_candidate(source):
+    """Select one explicit Python block; the verifier still checks every expression."""
+    if '```' not in source:
+        return source, 'none'
+    if source.count('```') != 2:
+        raise ValueError('Ambiguous candidate blocks')
+    match = re.search(r'```python\r?\n(.*?)\r?\n```', source, flags=re.DOTALL)
+    if not match or not match.group(1).strip():
+        raise ValueError('Unsupported candidate fence')
+    return match.group(1), 'single-python-fence'
 
 
 def enabled_providers():
@@ -110,6 +123,8 @@ def repair(provider, source, store, *, transport=None):
     try:
         slot = reserve_call(collection, provider, limit)
         raw = (transport or request_bytes)(url, os.environ[key_name], body)
+        normalization = 'none'
+        model_content_sha256 = None
         # Reuse strict finish/refusal/tool-call/usage validation. Normalize only
         # the expected SubQ model name for the existing Meta-format parser.
         if provider == 'subq':
@@ -120,6 +135,9 @@ def repair(provider, source, store, *, transport=None):
                 raise ValueError('Unexpected response model')
             data['model'] = MODEL
             candidate, metadata = import_meta_response(json.dumps(data).encode())
+            model_content_sha256 = hashlib.sha256(
+                data['choices'][0]['message']['content'].encode()).hexdigest()
+            candidate, normalization = normalize_subq_candidate(candidate)
         else:
             candidate, metadata = import_meta_response(raw)
         receipt = {
@@ -131,6 +149,9 @@ def repair(provider, source, store, *, transport=None):
             'input_scope': 'public-seeded-fixture',
             'candidate_sha256': hashlib.sha256(candidate.encode()).hexdigest(),
         }
+        if provider == 'subq':
+            receipt.update(candidate_normalization=normalization,
+                           model_content_sha256=model_content_sha256)
         report = store.submit(candidate)
         receipt['run_id'] = report['run_id']
         collection.update_one({'_id': slot}, {'$set': {
