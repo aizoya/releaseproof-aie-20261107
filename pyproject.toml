@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aizoya-releaseproof-event"
+version = "0.1.0"
+description = "Bounded independent verification prototype for AIE Code Summit 2026"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.setuptools]
+packages = ["releaseproof"]
