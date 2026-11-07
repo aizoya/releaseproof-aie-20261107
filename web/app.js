@@ -1,9 +1,10 @@
 'use strict';
 const $ = id => document.getElementById(id);
 let examples = {}, current = null;
+let revision = 0;
 let capabilities = {acceptance_enabled:false};
 const money = cents => typeof cents === 'number' ? '$' + (cents / 100).toFixed(2) : String(cents);
-function invalidate() { current = null; $('accept').hidden = true; $('download').hidden=true; $('result').hidden=true; $('accepted').textContent = ''; }
+function invalidate() { revision++; current = null; $('accept').hidden = true; $('download').hidden=true; $('result').hidden=true; $('accepted').textContent = ''; }
 async function post(path, body) {
   const response = await fetch(path, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const data = await response.json();
@@ -15,9 +16,11 @@ $('example').addEventListener('change', () => { $('source').value = examples[$('
 $('verify').addEventListener('click', async () => {
   invalidate(); $('verify').disabled=true;
   const source = $('source').value;
+  const requestRevision = revision;
   try {
     const data = await post('/api/verify', {source});
-    current = $('source').value === source ? data : null;
+    if (revision !== requestRevision || $('source').value !== source) return;
+    current = data;
     $('result').hidden=false;
     $('verdict').textContent = {pass:'Checks passed',fail:'Repair blocked',inconclusive:'Verification inconclusive'}[data.status];
     $('verdict').className=data.status;
@@ -43,7 +46,7 @@ $('verify').addEventListener('click', async () => {
     $('accept').hidden=data.status!=='pass'||!current||capabilities.acceptance_enabled!==true||data.acceptance_enabled===false;
     $('download').hidden=!current;
     $('result').scrollIntoView({behavior:'smooth',block:'start'});
-  } catch(error) { $('result').hidden=false; $('verdict').textContent='Verification unavailable'; $('gate').textContent='BLOCKED'; $('reason').textContent=error.message; $('checks').replaceChildren(); $('summary').textContent=''; $('evidence').textContent='No new evidence produced.'; }
+  } catch(error) { if (revision !== requestRevision || $('source').value !== source) return; $('result').hidden=false; $('verdict').textContent='Verification unavailable'; $('gate').textContent='BLOCKED'; $('reason').textContent=error.message; $('checks').replaceChildren(); $('summary').textContent=''; $('evidence').textContent='No new evidence produced.'; }
   finally { $('verify').disabled=false; }
 });
 $('accept').addEventListener('click', async () => {
@@ -67,6 +70,8 @@ Promise.all([readJson('/api/config'),readJson('/api/examples')]).then(([config,d
   if(config.mode==='hosted-preview'){
     $('mode-tag').textContent='VERIFICATION PREVIEW';
     $('mode-note').hidden=false;
-    $('mode-note').textContent='Verification only. Evidence is not stored on the server. Download your report; acceptance stays disabled until durable storage is connected.';
+    $('mode-note').textContent=config.persistence_configured
+      ? 'Development storage configured. Each verification must save and read back evidence or return BLOCKED. Hosted acceptance remains disabled.'
+      : 'Verification only. Evidence is not stored on the server. Download your report; acceptance stays disabled until durable storage is connected.';
   }
 }).catch(error=>{$('verify').disabled=true;$('source').value=error.message;});
