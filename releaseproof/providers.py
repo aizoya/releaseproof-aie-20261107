@@ -4,6 +4,7 @@ import json
 import os
 import time
 import uuid
+from pathlib import Path
 from urllib.request import Request, build_opener, HTTPRedirectHandler
 from .proposals import prepare_meta_request, import_meta_response, MODEL, MAX_RESPONSE
 from .core import digest
@@ -14,6 +15,8 @@ PROVIDERS = {
     'subq': ('https://api.subq.ai/v1/chat/completions', 'SUBQ_API_KEY', 'subq-preview'),
 }
 MAX_CALLS = 10  # Per provider for this demo version, shared by all warm processes.
+SUBQ_MAX_OUTPUT_TOKENS = 512
+SUBQ_MAX_REQUEST_BYTES = 8192
 
 
 class ProviderUnavailable(RuntimeError):
@@ -25,10 +28,35 @@ class NoRedirects(HTTPRedirectHandler):
         return None  # Never forward authorization to another endpoint.
 
 
+def subq_call_limit():
+    """Explicit activation only; a call cap is not a dollar or credit cap."""
+    value = os.environ.get('RELEASEPROOF_SUBQ_MAX_CALLS', '')
+    if (os.environ.get('VERCEL_ENV') != 'preview'
+            or not value.isascii() or not value.isdecimal()
+            or not 1 <= len(value) <= 2 or not 1 <= int(value) <= MAX_CALLS):
+        raise ProviderUnavailable('SubQ requires protected Preview and an explicitly approved call limit.')
+    return int(value)
+
+
+def unique_json_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError('Duplicate response field')
+        result[key] = value
+    return result
+
+
 def enabled_providers():
     enabled = os.environ.get('RELEASEPROOF_LIVE_PROVIDERS', '').split(',')
-    return [name for name, (_, key, _) in PROVIDERS.items()
-            if name in enabled and os.environ.get(key)]
+    available = [name for name, (_, key, _) in PROVIDERS.items()
+                 if name in enabled and os.environ.get(key)]
+    if 'subq' in available:
+        try:
+            subq_call_limit()
+        except ProviderUnavailable:
+            available.remove('subq')
+    return available
 
 
 def request_bytes(url, key, body):
@@ -43,8 +71,8 @@ def request_bytes(url, key, body):
         return raw
 
 
-def reserve_call(collection, provider):
-    for index in range(MAX_CALLS):
+def reserve_call(collection, provider, max_calls=MAX_CALLS):
+    for index in range(max_calls):
         slot = f'{provider}:seeded-repair-v1:{index}'
         result = collection.update_one({'_id': slot}, {'$setOnInsert': {
             '_id': slot, 'provider': provider, 'state': 'reserved',
@@ -60,24 +88,34 @@ def repair(provider, source, store, *, transport=None):
     if provider not in enabled_providers() or store is None:
         raise ProviderUnavailable('Provider or durable development storage is not configured.')
     url, key_name, model = PROVIDERS[provider]
+    limit = MAX_CALLS
+    if provider == 'subq':
+        limit = subq_call_limit()
+        examples = Path(__file__).resolve().parents[1] / 'examples'
+        seeded = {(examples / (name + '.py')).read_text().strip()
+                  for name in ('baseline', 'hardcoded', 'receipt_mismatch')}
+        if not isinstance(source, str) or source.strip() not in seeded:
+            raise ProviderUnavailable('SubQ is restricted to the fixed public seeded fixtures.')
     body = prepare_meta_request(source)
     if provider == 'subq':
-        body.update(model=model, store=False, max_tokens=2048)
+        body.update(model=model, store=False, max_tokens=SUBQ_MAX_OUTPUT_TOKENS,
+                    reasoning_effort='none')
         del body['max_completion_tokens']
-        del body['reasoning_effort']
         body['messages'][0]['role'] = 'system'
+        if len(json.dumps(body, ensure_ascii=True).encode()) > SUBQ_MAX_REQUEST_BYTES:
+            raise ProviderUnavailable('SubQ request exceeds the small demo limit.')
     collection = store.collection.database.get_collection(
         'provider_call_slots_v1', write_concern=store.collection.write_concern)
     slot = None
     try:
-        slot = reserve_call(collection, provider)
+        slot = reserve_call(collection, provider, limit)
         raw = (transport or request_bytes)(url, os.environ[key_name], body)
         # Reuse strict finish/refusal/tool-call/usage validation. Normalize only
         # the expected SubQ model name for the existing Meta-format parser.
         if provider == 'subq':
             if not isinstance(raw, bytes) or len(raw) > MAX_RESPONSE:
                 raise ValueError('Oversize response')
-            data = json.loads(raw)
+            data = json.loads(raw, object_pairs_hook=unique_json_object)
             if data.get('model') != model:
                 raise ValueError('Unexpected response model')
             data['model'] = MODEL
