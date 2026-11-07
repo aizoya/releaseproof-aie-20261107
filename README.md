@@ -2,7 +2,7 @@
 
 **An independent acceptance gate for a bounded software-repair task.**
 
-Event-built prototype for the AIE Code Summit, November 7, 2026. Primary theme: **Trust but Verify**. This is a local working prototype, not a deployed service or completed submission.
+Event-built prototype for the AIE Code Summit, November 7, 2026. Primary theme: **Trust but Verify**. This is a bounded working prototype with a protected verification preview, not a production service or completed submission.
 
 ## Run in two commands
 
@@ -13,7 +13,7 @@ python -m unittest discover -s tests -v
 python -m releaseproof serve
 ```
 
-Open **http://127.0.0.1:8765** on the same computer. The preview is loopback-only, so a phone or Cloud Browser on another computer cannot reach it. Do not expose this development server publicly. It has not undergone visual browser QA.
+Open **http://127.0.0.1:8765** on the same computer. The preview is loopback-only, so a phone or Cloud Browser on another computer cannot reach it. Do not expose this development server publicly. The hosted desktop journey has been checked; iPhone-specific visual QA remains pending.
 
 Choose **Original defect**, then **Convincing fix**, then **Correct formula**. Verify each. The convincing fix returns $130 for every order; it passes the visible example and fails other checks. Local acceptance re-verifies the exact stored candidate against the same recorded challenge seed. Failed or inconclusive candidates cannot advance. Acceptance changes only a local record; it does not merge, deploy, publish or submit anything.
 
@@ -63,9 +63,9 @@ Official references:
 - https://docs.agentverse.ai/documentation/launch-agents/agentverse-sdk/u-agents
 - https://uagents.fetch.ai/docs/examples/asi-1
 
-## Hosted verification preview (prepared, not deployed)
+## Hosted verification preview
 
-A separate WSGI entrypoint (`app.py`) and `vercel.json` prepare a stateless preview for Vercel. It runs the real bounded checks and supports report downloads, but persists no server evidence and always blocks acceptance. The local server retains its SQLite acceptance gate. No live hosting deployment has been verified. See [docs/HOSTING_PLAN.md](docs/HOSTING_PLAN.md) for the target, credit snapshot, cost gate and missing connections.
+A separate WSGI entrypoint (`app.py`) and `vercel.json` prepare a stateless preview for Vercel. It runs the real bounded checks and supports report downloads, but persists no server evidence and always blocks acceptance. The local server retains its SQLite acceptance gate. A protected preview is verified at https://aizoya-releaseproof-demo-hbk9doal4-aizoya.vercel.app/ . See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for live observations, the download-verification limitation, costs and missing connections. [docs/HOSTING_PLAN.md](docs/HOSTING_PLAN.md) records the setup boundary.
 
 ## Meta repair handoff
 

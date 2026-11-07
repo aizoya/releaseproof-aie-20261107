@@ -11,6 +11,3 @@ dependencies = []
 
 [tool.setuptools]
 packages = ["releaseproof"]
-
-[tool.vercel]
-entrypoint = "app:app"
