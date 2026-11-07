@@ -7,6 +7,7 @@ from .core import MAX_SOURCE, verify
 from .export import export_report, MAX_EXPORT_BODY
 from .mongo_store import configured_store, StorageUnavailable
 from .store import GateBlocked
+from .providers import enabled_providers, repair, ProviderUnavailable
 ROOT=Path(__file__).resolve().parents[1]
 CONFIG={'mode':'hosted-preview','persistent_evidence':False,'acceptance_enabled':False,'live_providers':False}
 SECURITY=[('Cache-Control','no-store'),('X-Content-Type-Options','nosniff'),
@@ -22,7 +23,9 @@ def app(environ,start_response):
     if method=='GET':
         if path in ('/health','/api/config'):
             return reply('200 OK',{'status':'verification-only',**CONFIG,
-                'persistence_configured':os.environ.get('RELEASEPROOF_STORAGE')=='mongodb'})
+                'persistence_configured':os.environ.get('RELEASEPROOF_STORAGE')=='mongodb',
+                'repair_providers':enabled_providers(),
+                'live_providers':bool(enabled_providers())})
         if path=='/api/examples':
             return reply('200 OK',{p.stem:p.read_text() for p in sorted((ROOT/'examples').glob('*.py'))})
         routes={'/':('index.html','text/html; charset=utf-8'),'/app.js':('app.js','text/javascript; charset=utf-8'),'/style.css':('style.css','text/css; charset=utf-8')}
@@ -60,7 +63,7 @@ def app(environ,start_response):
             return reply('200 OK',report,extra_headers=[('Content-Disposition','attachment; filename="'+filename+'"')])
         except (ValueError,UnicodeError,RecursionError):
             return reply('400 Bad Request',{'error':'Invalid export request.','gate':'blocked'})
-    if path!='/api/verify':return reply('404 Not Found',{'error':'Not found.'})
+    if path not in ('/api/verify','/api/repair'):return reply('404 Not Found',{'error':'Not found.'})
     if environ.get('CONTENT_TYPE','').split(';')[0]!='application/json':
         return reply('415 Unsupported Media Type',{'error':'JSON required.'})
     try:
@@ -69,6 +72,16 @@ def app(environ,start_response):
         raw=environ['wsgi.input'].read(size)
         if len(raw)!=size:raise ValueError()
         data=json.loads(raw)
+        if path=='/api/repair':
+            if os.environ.get('VERCEL_ENV') != 'preview':
+                raise ProviderUnavailable('Live repair is restricted to the protected Preview.')
+            # Sponsor inputs are fixed public fixtures, never arbitrary user text.
+            if (not isinstance(data,dict) or set(data)!={'provider','fixture'} or
+                    data['provider'] not in ('meta','subq') or
+                    data['fixture'] not in ('baseline','hardcoded','receipt_mismatch')):
+                raise ValueError()
+            source=(ROOT/'examples'/(data['fixture']+'.py')).read_text()
+            return reply('200 OK',repair(data['provider'],source,configured_store()))
         if not isinstance(data,dict) or set(data)!={'source'}:raise ValueError()
         source=data['source']
         if not isinstance(source,str) or len(source.encode())>MAX_SOURCE:raise ValueError()
@@ -82,6 +95,8 @@ def app(environ,start_response):
         if report['status']=='pass':
             report['reason']='All 40 bounded checks passed. Evidence is not persisted; acceptance remains disabled.'
         return reply('200 OK',report)
+    except ProviderUnavailable:
+        return reply('503 Service Unavailable',{'error':'Live repair unavailable or demo call limit reached. No candidate advanced; do not automatically retry.','gate':'blocked'})
     except StorageUnavailable:
         return reply('503 Service Unavailable',{'error':'Evidence storage unavailable; verification cannot advance.','gate':'blocked'})
     except GateBlocked:
