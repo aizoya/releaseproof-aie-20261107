@@ -1,0 +1,27 @@
+{
+  "schema_version": "aizoya-controls-v1",
+  "governing_os_version": "2.6",
+  "environment": "local-event-prototype",
+  "production_enabled": false,
+  "auto_deploy": false,
+  "auto_publish": false,
+  "security": false,
+  "compliance": true,
+  "evidence": true,
+  "human_approval": true,
+  "environment_separation": true,
+  "secret_scanning": false,
+  "dependency_scanning": false,
+  "audit_logging": true,
+  "telemetry_allowlist": true,
+  "telemetry_scrubbing_tests": false,
+  "telemetry_fields": [],
+  "limitations": [
+    "Local bounded prototype only; no public release authorization.",
+    "OS sandbox probe failed; arbitrary-code execution is disabled.",
+    "Limited pattern hygiene check is not a comprehensive secret/history audit.",
+    "Dependency resolver consistency passed; vulnerability audit not completed.",
+    "No external telemetry configured; no telemetry scrubbing test suite implemented.",
+    "Live Agentverse, ASI:One and model-provider integrations unverified."
+  ]
+}
