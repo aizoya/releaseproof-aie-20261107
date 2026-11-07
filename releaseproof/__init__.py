@@ -1,0 +1,1 @@
+"""ReleaseProof event prototype."""
