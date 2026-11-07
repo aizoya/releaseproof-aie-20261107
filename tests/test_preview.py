@@ -51,6 +51,22 @@ class PreviewTests(unittest.TestCase):
         _,r,_=self.call('/api/verify',{'source':'import os'})
         self.assertEqual((r['status'],r['gate']),('inconclusive','blocked'));self.assertNotIn('run_id',r)
 
+    def test_persistence_success_and_failure_are_honest(self):
+        from releaseproof.mongo_store import MongoEvidenceStore, StorageUnavailable
+        from releaseproof.store import GateBlocked
+        from test_mongo_store import Collection
+        store=MongoEvidenceStore(Collection())
+        with patch('releaseproof.preview.configured_store',return_value=store):
+            status,report,_=self.call('/api/verify',{'source':example('correct')},overrides={'HTTP_IDEMPOTENCY_KEY':'b'*64})
+            self.assertEqual((status,report['storage'],report['checks_run']),(200,'mongodb',40))
+            self.assertFalse(report['acceptance_enabled'])
+            self.assertEqual(self.call('/api/accept',report)[0],503)
+        for error,code in [(StorageUnavailable('secret detail'),503),(GateBlocked('secret detail'),409)]:
+            with patch('releaseproof.preview.configured_store',side_effect=error):
+                status,report,_=self.call('/api/verify',{'source':example('correct')})
+                self.assertEqual((status,report['gate']),(code,'blocked'))
+                self.assertNotIn('secret detail',json.dumps(report))
+
     def test_http_export_replays_exact_original_seed(self):
         from urllib.parse import urlencode
         from releaseproof.core import verify
