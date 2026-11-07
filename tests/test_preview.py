@@ -50,3 +50,36 @@ class PreviewTests(unittest.TestCase):
     def test_no_invented_run_on_unsupported_code(self):
         _,r,_=self.call('/api/verify',{'source':'import os'})
         self.assertEqual((r['status'],r['gate']),('inconclusive','blocked'));self.assertNotIn('run_id',r)
+
+    def test_http_export_replays_exact_original_seed(self):
+        from urllib.parse import urlencode
+        from releaseproof.core import verify
+        original=verify(example('correct'),challenge_seed=2**64-1)
+        raw=urlencode({'source':example('correct'),'challenge_seed':original['challenge_seed']}).encode()
+        status,report,headers=self.call('/api/report',overrides={'REQUEST_METHOD':'POST','CONTENT_TYPE':'application/x-www-form-urlencoded','CONTENT_LENGTH':str(len(raw)),'wsgi.input':io.BytesIO(raw)})
+        self.assertEqual(status,200)
+        self.assertIn('attachment; filename="releaseproof-',headers['Content-Disposition'])
+        self.assertEqual(report['challenge_seed'],str(2**64-1))
+        self.assertEqual(report['checks'],original['checks'])
+        self.assertFalse(report['acceptance_enabled'])
+    def test_export_rejects_conflicting_fields_and_invalid_seeds(self):
+        from urllib.parse import urlencode
+        for fields in [{'source':example('correct'),'challenge_seed':str(2**64)}, {'source':example('correct'),'challenge_seed':'-1'}, {'source':example('correct'),'challenge_seed':'1.2'}]:
+            raw=urlencode(fields).encode()
+            self.assertEqual(self.call('/api/report',overrides={'REQUEST_METHOD':'POST','CONTENT_TYPE':'application/x-www-form-urlencoded','CONTENT_LENGTH':str(len(raw)),'wsgi.input':io.BytesIO(raw)})[0],400)
+    def test_export_cannot_approve_a_failed_candidate(self):
+        from urllib.parse import urlencode
+        raw=urlencode({'source':example('hardcoded'),'challenge_seed':'42'}).encode()
+        _,report,_=self.call('/api/report',overrides={'REQUEST_METHOD':'POST','CONTENT_TYPE':'application/x-www-form-urlencoded','CONTENT_LENGTH':str(len(raw)),'wsgi.input':io.BytesIO(raw)})
+        self.assertEqual((report['status'],report['gate']),('fail','blocked'))
+
+class DeploymentLayoutTests(unittest.TestCase):
+    def test_file_based_entrypoint_and_route_are_consistent(self):
+        from pathlib import Path
+        from importlib.util import spec_from_file_location, module_from_spec
+        root=Path(__file__).resolve().parents[1]
+        config=json.loads((root/'vercel.json').read_text())
+        self.assertIn('api/index.py',config['functions'])
+        self.assertEqual(config['rewrites'],[{'source':'/(.*)','destination':'/api/index'}])
+        spec=spec_from_file_location('preview_entry',root/'api/index.py');module=module_from_spec(spec);spec.loader.exec_module(module)
+        self.assertIs(module.app,app)
