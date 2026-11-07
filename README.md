@@ -87,7 +87,7 @@ Live execution still requires a securely configured Meta key, verified access/cu
 | Fetch | Adapter coded; actual SDK schema test passed offline; live registration/discovery pending |
 | Meta | Request preparation and response-import adapter tested locally; no authenticated live calls |
 | Gemini | Planned independent challenger; event account/model access unverified |
-| MongoDB | Planned evidence backend; currently local SQLite |
+| MongoDB | Existing free Atlas cluster: connector write/read verified with synthetic reports; opt-in application adapter tested locally; deployed preview not connected |
 | Subquadratic | Planned history-aware check selection; not connected |
 | Analytics / CMS | Not implemented; not needed for this acceptance-gate slice |
 
@@ -106,3 +106,13 @@ python scripts/benchmark.py
 See [docs/PROVENANCE.md](docs/PROVENANCE.md). This source was created from scratch after Franklyn authorized coding on November 7. Earlier product planning, illustrative PDFs, video and preparation website are separate and were not copied into this repository. AI assistance: OpenAI Codex wrote and tested this implementation under Franklyn's direction. The existing SDK is an external dependency; the protocol adapter follows the official example's message structure. No customer code or data is included.
 
 The public event-source repository is https://github.com/aizoya/releaseproof-aie-20261107 . Franklyn explicitly approved its creation and source upload. Public source does not establish a working deployment. Before operational release: complete the full secret/history and dependency audit; verify actual sponsor connections; perform mobile/browser QA; complete live endpoint and ASI:One tests; record a new **one-minute working-product demo with voiceover**. Submission remains a separate approval. No competition submission has been made.
+
+### Optional MongoDB development storage
+
+See [docs/MONGODB_READINESS.md](docs/MONGODB_READINESS.md) for verified Atlas connector evidence and the prepared application path. Install `requirements-mongodb.txt` only for a storage-enabled build; set `RELEASEPROOF_STORAGE=mongodb` and `MONGODB_URI` through the approved runtime secret store. No credentials are committed. The current deployed preview remains stateless. Application network connectivity, runtime authorization and live retry tests are pending; hosted acceptance remains disabled.
+
+Responsive Chrome layout and verification journeys have now been checked at
+390 × 844; actual iPhone/Safari QA remains pending. See
+[docs/UI_QA_20261107.md](docs/UI_QA_20261107.md) for observations and the local
+fix that suppresses stale responses after editing a candidate during verification.
+Run its regression checks with `node --test tests/ui_race.test.cjs`.
