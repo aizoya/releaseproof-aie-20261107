@@ -1,8 +1,9 @@
 'use strict';
 const $ = id => document.getElementById(id);
 let examples = {}, current = null;
+let capabilities = {acceptance_enabled:false};
 const money = cents => typeof cents === 'number' ? '$' + (cents / 100).toFixed(2) : String(cents);
-function invalidate() { current = null; $('accept').hidden = true; $('accepted').textContent = ''; }
+function invalidate() { current = null; $('accept').hidden = true; $('download').hidden=true; $('result').hidden=true; $('accepted').textContent = ''; }
 async function post(path, body) {
   const response = await fetch(path, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const data = await response.json();
@@ -39,16 +40,30 @@ $('verify').addEventListener('click', async () => {
       $('checks').append(extra);
     }
     $('evidence').textContent=JSON.stringify(data,null,2);
-    $('accept').hidden=data.status!=='pass'||!current;
+    $('accept').hidden=data.status!=='pass'||!current||capabilities.acceptance_enabled!==true||data.acceptance_enabled===false;
+    $('download').hidden=!current;
     $('result').scrollIntoView({behavior:'smooth',block:'start'});
   } catch(error) { $('result').hidden=false; $('verdict').textContent='Verification unavailable'; $('gate').textContent='BLOCKED'; $('reason').textContent=error.message; $('checks').replaceChildren(); $('summary').textContent=''; $('evidence').textContent='No new evidence produced.'; }
   finally { $('verify').disabled=false; }
 });
 $('accept').addEventListener('click', async () => {
-  if(!current)return;
+  if(!current||capabilities.acceptance_enabled!==true)return;
   $('accept').disabled=true;
   try { const data=await post('/api/accept',{run_id:current.run_id,candidate_sha256:current.candidate_sha256}); $('accepted').textContent='Accepted locally after fresh verification. No merge or deployment.'; $('accept').hidden=true; }
   catch(error){$('accepted').textContent=error.message;}
   finally{$('accept').disabled=false;}
 });
-fetch('/api/examples').then(r=>{if(!r.ok)throw new Error('Could not load examples.');return r.json();}).then(data=>{examples=data;$('source').value=data.baseline;}).catch(error=>{$('verify').disabled=true;$('source').value=error.message;});
+$('download').addEventListener('click',()=>{
+  if(!current)return;
+  const url=URL.createObjectURL(new Blob([JSON.stringify(current,null,2)],{type:'application/json'}));
+  const a=document.createElement('a');a.href=url;a.download=`releaseproof-${current.candidate_sha256.slice(0,12)}.json`;a.click();URL.revokeObjectURL(url);
+});
+async function readJson(path){const r=await fetch(path);if(!r.ok)throw new Error('Could not load verification configuration.');return r.json();}
+Promise.all([readJson('/api/config'),readJson('/api/examples')]).then(([config,data])=>{
+  capabilities=config;examples=data;$('source').value=data.baseline;$('verify').disabled=false;
+  if(config.mode==='hosted-preview'){
+    $('mode-tag').textContent='VERIFICATION PREVIEW';
+    $('mode-note').hidden=false;
+    $('mode-note').textContent='Verification only. Evidence is not stored on the server. Download your report; acceptance stays disabled until durable storage is connected.';
+  }
+}).catch(error=>{$('verify').disabled=true;$('source').value=error.message;});
