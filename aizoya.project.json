@@ -1,0 +1,22 @@
+{
+  "schema_version": "aizoya-project-v1",
+  "product": "releaseproof",
+  "owner": "aizoya",
+  "environments": ["development"],
+  "providers": {
+    "hosting": {
+      "provider": "vercel",
+      "team_id": "team_Bt0UsWe7b5ZdHxUMn1RpNcWe",
+      "project_name": "releaseproof-aie-20261107-preview",
+      "project_id": "prj_sLpzFBw0BvbVUNZkE0H8mUXf5aWX",
+      "environment": "preview",
+      "authentication": "vercel-standard-protection",
+      "additional_demo_hosting_ceiling_usd": 5,
+      "production_promotion": false,
+      "automatic_git_deployment": false
+    }
+  },
+  "deploy": false,
+  "publish": false,
+  "production_enabled": false
+}
