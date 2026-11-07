@@ -1,0 +1,3 @@
+# Hosted preview runtime: pin the optional MongoDB driver for the approved build.
+# Local bounded verification still runs using only the standard library.
+-r requirements-mongodb.txt
