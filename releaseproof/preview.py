@@ -1,9 +1,12 @@
-"""Stateless WSGI verification preview. No DB writes, model calls or acceptance."""
+"""Verification preview with optional development storage; no acceptance."""
+import os
 import json
 from pathlib import Path
 from urllib.parse import urlsplit
 from .core import MAX_SOURCE, verify
 from .export import export_report, MAX_EXPORT_BODY
+from .mongo_store import configured_store, StorageUnavailable
+from .store import GateBlocked
 ROOT=Path(__file__).resolve().parents[1]
 CONFIG={'mode':'hosted-preview','persistent_evidence':False,'acceptance_enabled':False,'live_providers':False}
 SECURITY=[('Cache-Control','no-store'),('X-Content-Type-Options','nosniff'),
@@ -18,7 +21,8 @@ def app(environ,start_response):
     path=environ.get('PATH_INFO','/')
     if method=='GET':
         if path in ('/health','/api/config'):
-            return reply('200 OK',{'status':'verification-only',**CONFIG})
+            return reply('200 OK',{'status':'verification-only',**CONFIG,
+                'persistence_configured':os.environ.get('RELEASEPROOF_STORAGE')=='mongodb'})
         if path=='/api/examples':
             return reply('200 OK',{p.stem:p.read_text() for p in sorted((ROOT/'examples').glob('*.py'))})
         routes={'/':('index.html','text/html; charset=utf-8'),'/app.js':('app.js','text/javascript; charset=utf-8'),'/style.css':('style.css','text/css; charset=utf-8')}
@@ -65,11 +69,19 @@ def app(environ,start_response):
         if not isinstance(data,dict) or set(data)!={'source'}:raise ValueError()
         source=data['source']
         if not isinstance(source,str) or len(source.encode())>MAX_SOURCE:raise ValueError()
+        store=configured_store()
+        if store is not None:
+            report=store.submit(source,request_key=environ.get('HTTP_IDEMPOTENCY_KEY'))
+            return reply('200 OK',report)
         report=verify(source)
         report['storage']='not-persisted'
         report['acceptance_enabled']=False
         if report['status']=='pass':
             report['reason']='All 40 bounded checks passed. Evidence is not persisted; acceptance remains disabled.'
         return reply('200 OK',report)
+    except StorageUnavailable:
+        return reply('503 Service Unavailable',{'error':'Evidence storage unavailable; verification cannot advance.','gate':'blocked'})
+    except GateBlocked:
+        return reply('409 Conflict',{'error':'Stored evidence or request identity could not be verified.','gate':'blocked'})
     except (ValueError,UnicodeError,RecursionError):
         return reply('400 Bad Request',{'error':'Invalid verification request.','gate':'blocked'})
