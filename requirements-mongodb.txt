@@ -1,0 +1,3 @@
+# Optional application storage dependency; never needed for stateless verification.
+pymongo==4.19.0
+dnspython==2.9.2
