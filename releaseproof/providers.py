@@ -16,6 +16,7 @@ PROVIDERS = {
     'subq': ('https://api.subq.ai/v1/chat/completions', 'SUBQ_API_KEY', 'subq-preview'),
 }
 MAX_CALLS = 10  # Per provider for this demo version, shared by all warm processes.
+META_MAX_REQUEST_BYTES = 8192
 SUBQ_MAX_OUTPUT_TOKENS = 512
 SUBQ_MAX_REQUEST_BYTES = 8192
 
@@ -27,6 +28,16 @@ class ProviderUnavailable(RuntimeError):
 class NoRedirects(HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
         return None  # Never forward authorization to another endpoint.
+
+
+def meta_call_limit():
+    """Explicit activation only; call limits do not guarantee a credit/dollar cap."""
+    value = os.environ.get('RELEASEPROOF_META_MAX_CALLS', '')
+    if (os.environ.get('VERCEL_ENV') != 'preview'
+            or not value.isascii() or not value.isdecimal()
+            or not 1 <= len(value) <= 2 or not 1 <= int(value) <= MAX_CALLS):
+        raise ProviderUnavailable('Meta requires protected Preview and an explicitly approved call limit.')
+    return int(value)
 
 
 def subq_call_limit():
@@ -64,6 +75,11 @@ def enabled_providers():
     enabled = os.environ.get('RELEASEPROOF_LIVE_PROVIDERS', '').split(',')
     available = [name for name, (_, key, _) in PROVIDERS.items()
                  if name in enabled and os.environ.get(key)]
+    if 'meta' in available:
+        try:
+            meta_call_limit()
+        except ProviderUnavailable:
+            available.remove('meta')
     if 'subq' in available:
         try:
             subq_call_limit()
@@ -102,6 +118,13 @@ def repair(provider, source, store, *, transport=None):
         raise ProviderUnavailable('Provider or durable development storage is not configured.')
     url, key_name, model = PROVIDERS[provider]
     limit = MAX_CALLS
+    if provider == 'meta':
+        limit = meta_call_limit()
+        examples = Path(__file__).resolve().parents[1] / 'examples'
+        seeded = {(examples / (name + '.py')).read_text().strip()
+                  for name in ('baseline', 'hardcoded', 'receipt_mismatch')}
+        if not isinstance(source, str) or source.strip() not in seeded:
+            raise ProviderUnavailable('Meta is restricted to the fixed public seeded fixtures.')
     if provider == 'subq':
         limit = subq_call_limit()
         examples = Path(__file__).resolve().parents[1] / 'examples'
@@ -110,6 +133,8 @@ def repair(provider, source, store, *, transport=None):
         if not isinstance(source, str) or source.strip() not in seeded:
             raise ProviderUnavailable('SubQ is restricted to the fixed public seeded fixtures.')
     body = prepare_meta_request(source)
+    if provider == 'meta' and len(json.dumps(body, ensure_ascii=True).encode()) > META_MAX_REQUEST_BYTES:
+        raise ProviderUnavailable('Meta request exceeds the small demo limit.')
     if provider == 'subq':
         body.update(model=model, store=False, max_tokens=SUBQ_MAX_OUTPUT_TOKENS,
                     reasoning_effort='none')
@@ -139,6 +164,10 @@ def repair(provider, source, store, *, transport=None):
                 data['choices'][0]['message']['content'].encode()).hexdigest()
             candidate, normalization = normalize_subq_candidate(candidate)
         else:
+            if not isinstance(raw, bytes) or len(raw) > MAX_RESPONSE:
+                raise ValueError('Oversize response')
+            # Refuse ambiguous duplicate fields before the shared import parser.
+            json.loads(raw, object_pairs_hook=unique_json_object)
             candidate, metadata = import_meta_response(raw)
         receipt = {
             'provider': provider, 'model': model,
