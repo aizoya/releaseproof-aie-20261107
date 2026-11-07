@@ -1,0 +1,11 @@
+.git
+.venv
+.state
+__pycache__
+**/__pycache__
+*.sqlite*
+.env
+.env.*
+tests
+source-history.bundle
+artifacts

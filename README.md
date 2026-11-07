@@ -63,6 +63,10 @@ Official references:
 - https://docs.agentverse.ai/documentation/launch-agents/agentverse-sdk/u-agents
 - https://uagents.fetch.ai/docs/examples/asi-1
 
+## Hosted verification preview (prepared, not deployed)
+
+A separate WSGI entrypoint (`app.py`) and `vercel.json` prepare a stateless preview for Vercel. It runs the real bounded checks and supports report downloads, but persists no server evidence and always blocks acceptance. The local server retains its SQLite acceptance gate. No live hosting deployment has been verified. See [docs/HOSTING_PLAN.md](docs/HOSTING_PLAN.md) for the target, credit snapshot, cost gate and missing connections.
+
 ## Meta repair handoff
 
 The CLI prepares a bounded request for Meta’s documented `muse-spark-1.3` Chat Completions API, then independently verifies an imported response:
