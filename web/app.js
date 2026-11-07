@@ -51,9 +51,20 @@ $('verify').addEventListener('click', async () => {
 });
 $('accept').addEventListener('click', async () => {
   if(!current||capabilities.acceptance_enabled!==true)return;
+  const evidence = current;
+  const source = $('source').value;
+  const requestRevision = revision;
   $('accept').disabled=true;
-  try { const data=await post('/api/accept',{run_id:current.run_id,candidate_sha256:current.candidate_sha256}); $('accepted').textContent='Accepted locally after fresh verification. No merge or deployment.'; $('accept').hidden=true; }
-  catch(error){$('accepted').textContent=error.message;}
+  try {
+    await post('/api/accept',{run_id:evidence.run_id,candidate_sha256:evidence.candidate_sha256});
+    if (revision !== requestRevision || current !== evidence || $('source').value !== source) return;
+    $('accepted').textContent='Accepted locally after fresh verification. No merge or deployment.';
+    $('accept').hidden=true;
+  }
+  catch(error){
+    if (revision !== requestRevision || current !== evidence || $('source').value !== source) return;
+    $('accepted').textContent=error.message;
+  }
   finally{$('accept').disabled=false;}
 });
 $('download').addEventListener('click',()=>{
