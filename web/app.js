@@ -4,29 +4,21 @@ let examples = {}, current = null;
 let revision = 0;
 let capabilities = {acceptance_enabled:false};
 const money = cents => typeof cents === 'number' ? '$' + (cents / 100).toFixed(2) : String(cents);
-function invalidate() { revision++; current = null; $('accept').hidden = true; $('download').hidden=true; $('result').hidden=true; $('accepted').textContent = ''; }
+function invalidate() { revision++; current = null; $('accept').hidden = true; $('download').hidden=true; $('result').hidden=true; $('accepted').textContent = ''; $('proposal-note').textContent=''; }
 async function post(path, body) {
   const response = await fetch(path, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Request failed.');
   return data;
 }
-$('source').addEventListener('input', invalidate);
-$('example').addEventListener('change', () => { $('source').value = examples[$('example').value]; invalidate(); $('result').hidden=true; });
-$('verify').addEventListener('click', async () => {
-  invalidate(); $('verify').disabled=true;
-  const source = $('source').value;
-  const requestRevision = revision;
-  try {
-    const data = await post('/api/verify', {source});
-    if (revision !== requestRevision || $('source').value !== source) return;
+function showReport(data) {
     current = data;
     $('result').hidden=false;
     $('verdict').textContent = {pass:'Checks passed',fail:'Repair blocked',inconclusive:'Verification inconclusive'}[data.status];
     $('verdict').className=data.status;
     $('gate').textContent=data.gate.toUpperCase();
     $('reason').textContent=data.reason;
-    $('summary').textContent=`${data.checks.filter(x=>x.passed).length}/${data.checks_run} checks passed · ${data.duration_ms} ms · ${data.provider_calls} model calls`;
+    $('summary').textContent=`${data.checks.filter(x=>x.passed).length}/${data.checks_run} checks passed · ${data.duration_ms} ms · ${data.provider_calls} verifier model calls`;
     $('checks').replaceChildren();
     for (const check of data.checks.slice(0,8)) {
       const row=document.createElement('div'); row.className='check';
@@ -46,6 +38,17 @@ $('verify').addEventListener('click', async () => {
     $('accept').hidden=data.status!=='pass'||!current||capabilities.acceptance_enabled!==true||data.acceptance_enabled===false;
     $('download').hidden=!current;
     $('result').scrollIntoView({behavior:'smooth',block:'start'});
+}
+$('source').addEventListener('input', invalidate);
+$('example').addEventListener('change', () => { $('source').value = examples[$('example').value]; invalidate(); $('result').hidden=true; });
+$('verify').addEventListener('click', async () => {
+  invalidate(); $('verify').disabled=true;
+  const source = $('source').value;
+  const requestRevision = revision;
+  try {
+    const data = await post('/api/verify', {source});
+    if (revision !== requestRevision || $('source').value !== source) return;
+    showReport(data);
   } catch(error) { if (revision !== requestRevision || $('source').value !== source) return; $('result').hidden=false; $('verdict').textContent='Verification unavailable'; $('gate').textContent='BLOCKED'; $('reason').textContent=error.message; $('checks').replaceChildren(); $('summary').textContent=''; $('evidence').textContent='No new evidence produced.'; }
   finally { $('verify').disabled=false; }
 });
@@ -77,7 +80,11 @@ $('download').addEventListener('click',()=>{
 });
 async function readJson(path){const r=await fetch(path);if(!r.ok)throw new Error('Could not load verification configuration.');return r.json();}
 Promise.all([readJson('/api/config'),readJson('/api/examples')]).then(([config,data])=>{
-  capabilities=config;examples=data;$('source').value=data.baseline;$('verify').disabled=false;
+  capabilities=config;
+  const providers=config.repair_providers||[];
+  $('live-repair').hidden=!providers.length;
+  for(const provider of ['meta','subq'])$('repair-'+provider).hidden=!providers.includes(provider);
+  examples=data;$('source').value=data.baseline;$('verify').disabled=false;
   if(config.mode==='hosted-preview'){
     $('mode-tag').textContent='VERIFICATION PREVIEW';
     $('mode-note').hidden=false;
@@ -86,3 +93,27 @@ Promise.all([readJson('/api/config'),readJson('/api/examples')]).then(([config,d
       : 'Verification only. Evidence is not stored on the server. Download your report; acceptance stays disabled until durable storage is connected.';
   }
 }).catch(error=>{$('verify').disabled=true;$('source').value=error.message;});
+
+for (const provider of ['meta','subq']) {
+  $('repair-'+provider).addEventListener('click', async()=>{
+    invalidate();
+    const requestRevision=revision;
+    const originalSource=$('source').value;
+    $('repair-meta').disabled=true; $('repair-subq').disabled=true;
+    $('proposal-note').textContent='Requesting one repair. The model cannot approve its own result.';
+    try {
+      const data=await post('/api/repair',{provider,fixture:'baseline'});
+      if(revision!==requestRevision || $('source').value!==originalSource)return;
+      $('source').value=data.source;
+      showReport(data.report);
+      $('proposal-note').textContent=`${data.proposal.provider} · ${data.proposal.model} · 1 provider request. Evidence saved and replayed. Billed cost not independently verified.`;
+      $('evidence').textContent=JSON.stringify(data,null,2);
+      $('accept').hidden=true;
+    } catch(error) {
+      if(revision!==requestRevision || $('source').value!==originalSource)return;
+      $('proposal-note').textContent=error.message;
+    } finally {
+      $('repair-meta').disabled=false; $('repair-subq').disabled=false;
+    }
+  });
+}
