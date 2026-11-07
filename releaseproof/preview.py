@@ -35,7 +35,10 @@ def app(environ,start_response):
     if method!='POST':return reply('405 Method Not Allowed',{'error':'Method not allowed.'})
     origin=environ.get('HTTP_ORIGIN')
     if origin:
-        parsed=urlsplit(origin)
+        try:
+            parsed=urlsplit(origin)
+        except ValueError:
+            return reply('403 Forbidden',{'error':'Cross-origin request refused.'})
         host=environ.get('HTTP_HOST','')
         local=host.startswith(('127.0.0.1:','localhost:'))
         if parsed.netloc!=host or parsed.path or parsed.query or parsed.fragment or parsed.username or parsed.password or parsed.scheme not in (('https','http') if local else ('https',)):
