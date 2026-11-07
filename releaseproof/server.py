@@ -25,6 +25,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if not self.valid_host(): return self.respond(403, {'error': 'Invalid host.'})
         path = urlsplit(self.path).path
+        if path == '/api/config':
+            return self.respond(200, {'mode':'local','persistent_evidence':True,'acceptance_enabled':True,'live_providers':False})
         if path == '/health': return self.respond(200, {'status': 'local-ready', 'live_providers': False})
         routes = {'/': ('web/index.html', 'text/html; charset=utf-8'),
                   '/app.js': ('web/app.js', 'text/javascript; charset=utf-8'),
